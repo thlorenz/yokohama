@@ -1,0 +1,19 @@
+[package]
+name = "actor-pubsub"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+console-subscriber = { workspace = true }
+env_logger = { workspace = true }
+jsonrpc-core = { workspace = true }
+jsonrpc-pubsub = { workspace = true }
+jsonrpc-ws-server = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
