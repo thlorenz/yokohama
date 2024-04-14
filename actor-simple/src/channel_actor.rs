@@ -1,6 +1,12 @@
 // Inspired by https://ryhl.io/blog/actors-with-tokio/
 
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
+    time::{Duration, Instant},
+};
 
 use crate::common::ActorMessage;
 use log::*;
@@ -77,6 +83,7 @@ impl ChannelActorHandle {
 pub struct ChannelConsumer {
     handle: ChannelActorHandle,
     name: String,
+    times: Arc<RwLock<Vec<Duration>>>,
 }
 
 impl ChannelConsumer {
@@ -84,18 +91,16 @@ impl ChannelConsumer {
         Self {
             handle,
             name: name.to_string(),
+            times: Arc::<RwLock<Vec<Duration>>>::default(),
         }
     }
 
     pub fn get_id_periodically(&self, interval_millis: u64) -> JoinHandle<()> {
         let mut handle = self.handle.clone();
         let name = self.name.clone();
+        let times = self.times.clone();
         tokio::task::spawn(async move {
-            loop {
-                let id = handle.get_id().await;
-                info!("Consumer '{}' got id: {}", name, id);
-                tokio::time::sleep(Duration::from_millis(interval_millis)).await;
-            }
+            run_request_loop(&times, &mut handle, &name, interval_millis).await;
         })
     }
 
@@ -105,6 +110,7 @@ impl ChannelConsumer {
     ) -> std::thread::JoinHandle<()> {
         let mut handle = self.handle.clone();
         let name = self.name.clone();
+        let times = self.times.clone();
 
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
@@ -115,12 +121,36 @@ impl ChannelConsumer {
                 .unwrap();
 
             rt.block_on(async move {
-                loop {
-                    let id = handle.get_id().await;
-                    info!("Consumer '{}' got id: {}", name, id);
-                    tokio::time::sleep(Duration::from_millis(interval_millis)).await;
-                }
+                run_request_loop(&times, &mut handle, &name, interval_millis).await;
             });
         })
+    }
+}
+
+async fn run_request_loop(
+    times: &RwLock<Vec<Duration>>,
+    handle: &mut ChannelActorHandle,
+    name: &str,
+    interval_millis: u64,
+) {
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    loop {
+        let start = Instant::now();
+        let id = handle.get_id().await;
+        let elapsed = start.elapsed();
+        times.write().unwrap().push(elapsed);
+
+        let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+        if count % 100 == 0 {
+            let total = times.read().unwrap().iter().sum::<Duration>();
+            let avg = total / times.read().unwrap().len() as u32;
+            info!(
+                "Consumer '{}' got id: {} (avg: {}µs)",
+                name,
+                id,
+                avg.as_nanos() as f64 / 1000.0
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(interval_millis)).await;
     }
 }

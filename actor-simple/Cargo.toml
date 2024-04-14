@@ -7,6 +7,7 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
+console-subscriber = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true }
