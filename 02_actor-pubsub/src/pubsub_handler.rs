@@ -1,16 +1,19 @@
+use jsonrpc_pubsub::{Subscriber, SubscriptionId};
 use log::*;
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 
-use crate::errors::{PubsubError, PubsubResult};
+use crate::{
+    common::ResultWithSubscriptionId,
+    errors::{PubsubError, PubsubResult},
+};
 
 pub enum Subscription {
     Ticker {
-        ack_subid: oneshot::Sender<u64>,
-        ticker: mpsc::Sender<u64>,
+        subscriber: Subscriber,
         interval: Duration,
     },
 }
@@ -35,22 +38,26 @@ impl PubsubActorImpl {
     async fn handle_subscription(&mut self, subscription: Subscription) {
         match subscription {
             Subscription::Ticker {
-                ack_subid,
-                ticker,
                 interval,
+                subscriber,
             } => {
                 let subid = self.get_subid();
-                let _ = ack_subid.send(subid).map_err(|e| {
-                    warn!("Failed to send response: {:?}", e);
-                });
-                let mut count = 0;
+                let sink = subscriber
+                    .assign_id(SubscriptionId::Number(subid))
+                    .map_err(|e| {
+                        error!("Failed to assign subscription id: {:?}", e);
+                    })
+                    .unwrap();
+                let mut tick = 0;
                 loop {
                     // TODO: unsubscribe
                     tokio::time::sleep(interval).await;
-                    count += 1;
-                    let _ = ticker.send(count).await.map_err(|e| {
-                        warn!("Failed to send response: {:#?}", e);
-                    });
+                    tick += 1;
+                    let res = ResultWithSubscriptionId::new(tick, subid);
+                    if sink.notify(res.into_params_map()).is_err() {
+                        debug!("Subscripion has ended");
+                        break;
+                    }
                 }
             }
         }
@@ -90,24 +97,18 @@ impl PubsubActor {
 
     pub fn sub_ticker(
         &self,
+        subscriber: Subscriber,
         interval: Duration,
-    ) -> PubsubResult<(u64, mpsc::Receiver<u64>)> {
-        let (subid_tx, subid_rx) = oneshot::channel();
-        let (ticker_tx, ticker_rx) = mpsc::channel(100);
+    ) -> PubsubResult<()> {
         self.subscribe
             .blocking_send(Subscription::Ticker {
-                ack_subid: subid_tx,
-                ticker: ticker_tx,
                 interval,
+                subscriber,
             })
             .map_err(|err| {
                 PubsubError::FailedToSendSubscription(Box::new(err))
             })?;
 
-        let subid = subid_rx.blocking_recv().map_err(|err| {
-            PubsubError::FailedToConfirmSubscription(Box::new(err))
-        })?;
-
-        Ok((subid, ticker_rx))
+        Ok(())
     }
 }

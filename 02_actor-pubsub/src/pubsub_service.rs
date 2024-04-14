@@ -6,11 +6,7 @@ use std::{sync::Arc, time::Duration};
 use jsonrpc_pubsub::{PubSubHandler, Session, Subscriber, SubscriptionId};
 use jsonrpc_ws_server::{RequestContext, Server, ServerBuilder};
 
-use crate::{
-    common::{ResultWithSubscriptionId, TickSubscription},
-    errors::reject_internal_error,
-    pubsub_handler::PubsubActor,
-};
+use crate::{common::TickSubscription, pubsub_handler::PubsubActor};
 
 pub struct PubsubService {
     server: Option<Server>,
@@ -61,7 +57,11 @@ impl PubsubService {
                     // thread then this function never returns and the client never receives the
                     // subscription confirmation nor any ticks.
                     let thread = std::thread::current();
-                    debug!("tick sub thread: {:?} - {:?}", thread.name(), thread.id());
+                    debug!(
+                        "tick sub thread: {:?} - {:?}",
+                        thread.name(),
+                        thread.id()
+                    );
 
                     info!("params: {:#?}", params);
 
@@ -69,36 +69,24 @@ impl PubsubService {
                         .parse::<TickSubscription>()
                         .expect("Invalid params")
                         .interval;
-                    match actor.sub_ticker(Duration::from_millis(interval)) {
-                        Ok((subid, mut rx)) => {
-                            let sink = subscriber
-                                .assign_id(SubscriptionId::Number(subid))
-                                .map_err(|e| {
-                                    error!("Failed to assign subscription id: {:?}", e);
-                                })
-                                .unwrap();
 
-                            std::thread::spawn(move || {
-                                while let Some(tick) = rx.blocking_recv() {
-                                    let res = ResultWithSubscriptionId::new(tick, subid);
-                                    if sink.notify(res.into_params_map()).is_err() {
-                                        debug!("Subscripion has ended");
-                                        break;
-                                    }
-                                    debug!("{} - ticked {}", subid, tick);
-                                }
-                            });
-                        }
-                        Err(err) => {
-                            error!("Failed to subscribe to ticker: {:?}", err);
-                            reject_internal_error(subscriber, "Failed to subscribe", Some(err));
-                        }
+                    if let Err(err) = actor
+                        .sub_ticker(subscriber, Duration::from_millis(interval))
+                    {
+                        error!("Failed to subscribe to ticker: {:?}", err);
+                        // reject_internal_error(
+                        //     subscriber,
+                        //     "Failed to subscribe",
+                        //     Some(err),
+                        // );
                     };
                 },
             ),
             (
                 "tickUnsubscribe",
-                |_id: SubscriptionId, _meta| -> BoxFuture<jsonrpc_core::Result<Value>> {
+                |_id: SubscriptionId,
+                 _meta|
+                 -> BoxFuture<jsonrpc_core::Result<Value>> {
                     debug!("Closing tick subscription");
                     Box::pin(futures::future::ready(Ok(Value::Bool(true))))
                 },
