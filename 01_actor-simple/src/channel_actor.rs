@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use log::*;
 use tokio::sync::{mpsc, oneshot};
 
+// Seeing ~95µs request round trip time for same-thread consumer and ~150µs for separate-thread consumer
+
 // -----------------
 // ChannelActor
 // -----------------

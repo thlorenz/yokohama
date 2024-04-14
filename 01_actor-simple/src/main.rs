@@ -3,9 +3,13 @@
 use channel_actor::ChannelActorHandle;
 use consumer::ChannelConsumer;
 use log::*;
+use mutex_actor::MutexActorHandle;
+use traits::ActorHandle;
+
 mod channel_actor;
 mod common;
 mod consumer;
+mod mutex_actor;
 mod traits;
 
 fn init_logger() {
@@ -23,16 +27,23 @@ async fn main() {
     init_logger();
     console_subscriber::init();
 
-    let channel_actor_handle = ChannelActorHandle::new();
-    let channel_consumer_uno = ChannelConsumer::new(channel_actor_handle.clone(), "uno");
-    let channel_consumer_dos = ChannelConsumer::new(channel_actor_handle.clone(), "dos");
-    let channel_consumer_tres = ChannelConsumer::new(channel_actor_handle.clone(), "tres");
+    if std::env::args().any(|arg| arg == "--mutex") {
+        run(MutexActorHandle::new()).await;
+    } else {
+        run(ChannelActorHandle::new()).await;
+    }
+}
 
-    let hdl_tres = channel_consumer_tres.get_id_periodically_in_separate_runtime(15);
+async fn run<T: ActorHandle>(handle: T) {
+    let consumer_uno = ChannelConsumer::new(handle.clone(), "uno");
+    let consumer_dos = ChannelConsumer::new(handle.clone(), "dos");
+    let consumer_tres = ChannelConsumer::new(handle.clone(), "tres");
+
+    let hdl_tres = consumer_tres.get_id_periodically_in_separate_runtime(15);
 
     tokio::try_join!(
-        channel_consumer_uno.get_id_periodically(10),
-        channel_consumer_dos.get_id_periodically(20)
+        consumer_uno.get_id_periodically(10),
+        consumer_dos.get_id_periodically(20)
     )
     .map_err(|e| error!("Error: {:?}", e))
     .unwrap();
