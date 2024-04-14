@@ -1,7 +1,11 @@
-use channel_actor::{ChannelActorHandle, ChannelConsumer};
+// Inspired by https://ryhl.io/blog/actors-with-tokio/
+
+use channel_actor::ChannelActorHandle;
+use consumer::ChannelConsumer;
 use log::*;
 mod channel_actor;
 mod common;
+mod consumer;
 
 fn init_logger() {
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());

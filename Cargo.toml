@@ -6,7 +6,7 @@ license = "MIT"
 edition = "2021"
 
 [workspace]
-members = ["actor-simple"]
+members = ["01_actor-simple"]
 resolver = "2"
 
 [workspace.dependencies]
