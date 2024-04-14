@@ -1,0 +1,12 @@
+[workspace.package]
+version = "0.0.0"
+authors = ["Thorsten Lorenz <thlorenz@gmx.de>"]
+repository = "https://github.com/thlorenz/yokohama"
+license = "MIT"
+edition = "2021"
+
+[workspace]
+members = []
+resolver = "2"
+
+[workspace.dependencies]
