@@ -4,7 +4,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinSet};
 
 use crate::{
     common::ResultWithSubscriptionId,
@@ -34,30 +34,30 @@ impl PubsubActorImpl {
     fn get_subid(&self) -> u64 {
         self.sub_id.fetch_add(1, Ordering::Relaxed)
     }
+}
 
-    async fn handle_subscription(&mut self, subscription: Subscription) {
-        match subscription {
-            Subscription::Ticker {
-                interval,
-                subscriber,
-            } => {
-                let subid = self.get_subid();
-                let sink = subscriber
-                    .assign_id(SubscriptionId::Number(subid))
-                    .map_err(|e| {
-                        error!("Failed to assign subscription id: {:?}", e);
-                    })
-                    .unwrap();
-                let mut tick = 0;
-                loop {
-                    // TODO: unsubscribe
-                    tokio::time::sleep(interval).await;
-                    tick += 1;
-                    let res = ResultWithSubscriptionId::new(tick, subid);
-                    if sink.notify(res.into_params_map()).is_err() {
-                        debug!("Subscripion has ended");
-                        break;
-                    }
+async fn handle_subscription(subscription: Subscription) {
+    match subscription {
+        Subscription::Ticker {
+            interval,
+            subscriber,
+        } => {
+            let subid = 1; //self.get_subid();
+            let sink = subscriber
+                .assign_id(SubscriptionId::Number(subid))
+                .map_err(|e| {
+                    error!("Failed to assign subscription id: {:?}", e);
+                })
+                .unwrap();
+            let mut tick = 0;
+            loop {
+                // TODO: unsubscribe
+                tokio::time::sleep(interval).await;
+                tick += 1;
+                let res = ResultWithSubscriptionId::new(tick, subid);
+                if sink.notify(res.into_params_map()).is_err() {
+                    debug!("Subscripion has ended");
+                    break;
                 }
             }
         }
@@ -76,6 +76,7 @@ impl PubsubActor {
     pub fn new_separate_thread() -> Self {
         let (subscribe, subscriptions) = mpsc::channel(100);
         let mut actor = PubsubActorImpl::new(subscriptions);
+        let mut subs = JoinSet::new();
 
         std::thread::spawn(move || {
             tokio::runtime::Builder::new_multi_thread()
@@ -84,10 +85,23 @@ impl PubsubActor {
                 .build()
                 .unwrap()
                 .block_on(async move {
-                    while let Some(subscription) =
-                        actor.subscriptions.recv().await
-                    {
-                        actor.handle_subscription(subscription).await;
+                    loop {
+                        if let Some(subscription) =
+                            match actor.subscriptions.try_recv() {
+                                Ok(sub) => Some(sub),
+                                Err(err) => match err {
+                                    mpsc::error::TryRecvError::Empty => None,
+                                    mpsc::error::TryRecvError::Disconnected => {
+                                        break;
+                                    }
+                                },
+                            }
+                        {
+                            subs.spawn(handle_subscription(subscription));
+                        }
+                        if let Some(Err(err)) = subs.try_join_next() {
+                            error!("Failed to join task: {:?}", err)
+                        }
                     }
                 });
         });
