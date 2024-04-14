@@ -6,7 +6,12 @@ license = "MIT"
 edition = "2021"
 
 [workspace]
-members = []
+members = ["01_actor-simple"]
 resolver = "2"
 
 [workspace.dependencies]
+async-trait = "0.1.80"
+console-subscriber = "0.2.0"
+env_logger = "0.11.3"
+log = "0.4.21"
+tokio = { version = "1.37.0", features = ["full"] }
