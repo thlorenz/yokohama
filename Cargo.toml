@@ -6,7 +6,8 @@ license = "MIT"
 edition = "2021"
 
 [workspace]
-members = []
+members = ["actor-simple"]
 resolver = "2"
 
 [workspace.dependencies]
+tokio = { version = "1.37.0", features = ["full"] }
