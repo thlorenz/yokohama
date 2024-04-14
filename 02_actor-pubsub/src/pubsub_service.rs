@@ -28,9 +28,10 @@ impl PubsubService {
         service.add_version_subscription(&mut io);
         service.add_ticker_subscription(&mut io);
 
-        let server = ServerBuilder::with_meta_extractor(io, |context: &RequestContext| {
-            Arc::new(Session::new(context.sender()))
-        })
+        let server = ServerBuilder::with_meta_extractor(
+            io,
+            |context: &RequestContext| Arc::new(Session::new(context.sender())),
+        )
         .start(&url.parse().unwrap())
         .expect("Unable to start RPC server");
 

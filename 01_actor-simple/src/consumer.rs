@@ -52,7 +52,8 @@ impl<T: ActorHandle> ChannelConsumer<T> {
                 .unwrap();
 
             rt.block_on(async move {
-                run_request_loop(&times, &mut handle, &name, interval_millis).await;
+                run_request_loop(&times, &mut handle, &name, interval_millis)
+                    .await;
             });
         })
     }

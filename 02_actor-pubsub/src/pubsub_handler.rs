@@ -77,7 +77,9 @@ impl PubsubActor {
                 .build()
                 .unwrap()
                 .block_on(async move {
-                    while let Some(subscription) = actor.subscriptions.recv().await {
+                    while let Some(subscription) =
+                        actor.subscriptions.recv().await
+                    {
                         actor.handle_subscription(subscription).await;
                     }
                 });
@@ -86,7 +88,10 @@ impl PubsubActor {
         Self { subscribe }
     }
 
-    pub fn sub_ticker(&self, interval: Duration) -> PubsubResult<(u64, mpsc::Receiver<u64>)> {
+    pub fn sub_ticker(
+        &self,
+        interval: Duration,
+    ) -> PubsubResult<(u64, mpsc::Receiver<u64>)> {
         let (subid_tx, subid_rx) = oneshot::channel();
         let (ticker_tx, ticker_rx) = mpsc::channel(100);
         self.subscribe
@@ -95,11 +100,13 @@ impl PubsubActor {
                 ticker: ticker_tx,
                 interval,
             })
-            .map_err(|err| PubsubError::FailedToSendSubscription(Box::new(err)))?;
+            .map_err(|err| {
+                PubsubError::FailedToSendSubscription(Box::new(err))
+            })?;
 
-        let subid = subid_rx
-            .blocking_recv()
-            .map_err(|err| PubsubError::FailedToConfirmSubscription(Box::new(err)))?;
+        let subid = subid_rx.blocking_recv().map_err(|err| {
+            PubsubError::FailedToConfirmSubscription(Box::new(err))
+        })?;
 
         Ok((subid, ticker_rx))
     }

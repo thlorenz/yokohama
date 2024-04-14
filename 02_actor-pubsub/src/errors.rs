@@ -22,11 +22,25 @@ pub fn reject_internal_error<T: std::fmt::Debug>(
     msg: &str,
     err: Option<T>,
 ) {
-    _reject_subscriber_error(subscriber, msg, err, jsonrpc_core::ErrorCode::InternalError)
+    _reject_subscriber_error(
+        subscriber,
+        msg,
+        err,
+        jsonrpc_core::ErrorCode::InternalError,
+    )
 }
 
-pub fn reject_parse_error<T: std::fmt::Debug>(subscriber: Subscriber, msg: &str, err: Option<T>) {
-    _reject_subscriber_error(subscriber, msg, err, jsonrpc_core::ErrorCode::ParseError)
+pub fn reject_parse_error<T: std::fmt::Debug>(
+    subscriber: Subscriber,
+    msg: &str,
+    err: Option<T>,
+) {
+    _reject_subscriber_error(
+        subscriber,
+        msg,
+        err,
+        jsonrpc_core::ErrorCode::ParseError,
+    )
 }
 
 fn _reject_subscriber_error<T: std::fmt::Debug>(
