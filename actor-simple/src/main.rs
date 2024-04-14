@@ -15,6 +15,9 @@ async fn main() {
     let channel_actor_handle = ChannelActorHandle::new();
     let channel_consumer_uno = ChannelConsumer::new(channel_actor_handle.clone(), "uno");
     let channel_consumer_dos = ChannelConsumer::new(channel_actor_handle.clone(), "dos");
+    let channel_consumer_tres = ChannelConsumer::new(channel_actor_handle.clone(), "tres");
+
+    let hdl_tres = channel_consumer_tres.get_id_periodically_in_separate_runtime(100);
 
     tokio::try_join!(
         channel_consumer_uno.get_id_periodically(500),
@@ -22,4 +25,6 @@ async fn main() {
     )
     .map_err(|e| error!("Error: {:?}", e))
     .unwrap();
+
+    hdl_tres.join().unwrap();
 }

@@ -98,4 +98,29 @@ impl ChannelConsumer {
             }
         })
     }
+
+    pub fn get_id_periodically_in_separate_runtime(
+        &self,
+        interval_millis: u64,
+    ) -> std::thread::JoinHandle<()> {
+        let mut handle = self.handle.clone();
+        let name = self.name.clone();
+
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .thread_name(name.clone())
+                .build()
+                .unwrap();
+
+            rt.block_on(async move {
+                loop {
+                    let id = handle.get_id().await;
+                    info!("Consumer '{}' got id: {}", name, id);
+                    tokio::time::sleep(Duration::from_millis(interval_millis)).await;
+                }
+            });
+        })
+    }
 }
