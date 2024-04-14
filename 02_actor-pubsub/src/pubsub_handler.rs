@@ -86,21 +86,18 @@ impl PubsubActor {
                 .unwrap()
                 .block_on(async move {
                     loop {
-                        if let Some(subscription) =
-                            match actor.subscriptions.try_recv() {
-                                Ok(sub) => Some(sub),
-                                Err(err) => match err {
-                                    mpsc::error::TryRecvError::Empty => None,
-                                    mpsc::error::TryRecvError::Disconnected => {
-                                        break;
-                                    }
-                                },
+                        tokio::select! {
+                            subscription = actor.subscriptions.recv() => {
+                                match subscription {
+                                    Some(subscription) => subs.spawn(handle_subscription(subscription)),
+                                    None => break,
+                                };
+                            },
+                            next = subs.join_next() => {
+                                if let Some(Err(err)) = next {
+                                    error!("Failed to join task: {:?}", err)
+                                }
                             }
-                        {
-                            subs.spawn(handle_subscription(subscription));
-                        }
-                        if let Some(Err(err)) = subs.try_join_next() {
-                            error!("Failed to join task: {:?}", err)
                         }
                     }
                 });
