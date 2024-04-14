@@ -1,6 +1,5 @@
-// Inspired by https://ryhl.io/blog/actors-with-tokio/
-
-use crate::common::ActorMessage;
+use crate::{common::ActorMessage, traits::ActorHandle};
+use async_trait::async_trait;
 use log::*;
 use tokio::sync::{mpsc, oneshot};
 
@@ -53,8 +52,11 @@ impl ChannelActorHandle {
 
         Self { sender }
     }
+}
 
-    pub async fn get_id(&mut self) -> u64 {
+#[async_trait]
+impl ActorHandle for ChannelActorHandle {
+    async fn get_id(&mut self) -> u64 {
         let (send, recv) = oneshot::channel();
 
         let message = ActorMessage::GetId { respond_to: send };

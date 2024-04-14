@@ -9,15 +9,16 @@ use std::{
 use log::*;
 use tokio::task::JoinHandle;
 
-use crate::channel_actor::ChannelActorHandle;
-pub struct ChannelConsumer {
-    handle: ChannelActorHandle,
+use crate::traits::ActorHandle;
+
+pub struct ChannelConsumer<T: ActorHandle> {
+    handle: T,
     name: String,
     times: Arc<RwLock<Vec<Duration>>>,
 }
 
-impl ChannelConsumer {
-    pub fn new(handle: ChannelActorHandle, name: &str) -> Self {
+impl<T: ActorHandle> ChannelConsumer<T> {
+    pub fn new(handle: T, name: &str) -> Self {
         Self {
             handle,
             name: name.to_string(),
@@ -57,9 +58,9 @@ impl ChannelConsumer {
     }
 }
 
-async fn run_request_loop(
+async fn run_request_loop<T: ActorHandle>(
     times: &RwLock<Vec<Duration>>,
-    handle: &mut ChannelActorHandle,
+    handle: &mut T,
     name: &str,
     interval_millis: u64,
 ) {

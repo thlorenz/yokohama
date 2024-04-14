@@ -6,6 +6,7 @@ use log::*;
 mod channel_actor;
 mod common;
 mod consumer;
+mod traits;
 
 fn init_logger() {
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
