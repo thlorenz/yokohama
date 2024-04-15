@@ -1,58 +1,25 @@
 use std::{
     collections::HashMap,
-    future::Future,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
 };
 
-#[derive(Clone)]
-pub struct Unsubscriber {
-    unsubscribed: Arc<AtomicBool>,
-}
-
-impl Unsubscriber {
-    pub fn new() -> Self {
-        Self {
-            unsubscribed: Arc::<AtomicBool>::default(),
-        }
-    }
-
-    pub fn unsubscribe(&self) {
-        self.unsubscribed.store(true, Ordering::SeqCst);
-    }
-}
-
-impl Future for Unsubscriber {
-    type Output = ();
-
-    fn poll(
-        self: std::pin::Pin<&mut Self>,
-        _: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        if self.unsubscribed.load(Ordering::SeqCst) {
-            std::task::Poll::Ready(())
-        } else {
-            std::task::Poll::Pending
-        }
-    }
-}
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Unsubscribers {
-    unsubscribers: Arc<Mutex<HashMap<u64, Unsubscriber>>>,
+    unsubscribers: Arc<Mutex<HashMap<u64, CancellationToken>>>,
 }
 
 impl Unsubscribers {
     pub fn new() -> Self {
         Self {
-            unsubscribers: Arc::<Mutex<HashMap<u64, Unsubscriber>>>::default(),
+            unsubscribers:
+                Arc::<Mutex<HashMap<u64, CancellationToken>>>::default(),
         }
     }
 
-    pub fn add(&self, id: u64) -> Unsubscriber {
-        let unsubscriber = Unsubscriber::new();
+    pub fn add(&self, id: u64) -> CancellationToken {
+        let unsubscriber = CancellationToken::new();
         let mut unsubscribers = self.unsubscribers.lock().unwrap();
         unsubscribers.insert(id, unsubscriber.clone());
         unsubscriber
@@ -61,7 +28,7 @@ impl Unsubscribers {
     pub fn unsubscribe(&self, id: u64) {
         let mut unsubscribers = self.unsubscribers.lock().unwrap();
         if let Some(unsubscriber) = unsubscribers.remove(&id) {
-            unsubscriber.unsubscribe()
+            unsubscriber.cancel();
         }
     }
 }

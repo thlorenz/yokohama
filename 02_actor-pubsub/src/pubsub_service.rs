@@ -109,10 +109,8 @@ impl PubsubService {
 
     pub fn run(&mut self) {
         let server = self.server.take().expect("Call run only once.");
-        // std::thread::spawn(move || {
         let thread = std::thread::current();
         debug!("Server thread: {:?} - {:?}", thread.name(), thread.id());
         let _ = server.wait();
-        // });
     }
 }

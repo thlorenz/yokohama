@@ -10,11 +10,7 @@ fn init_logger() {
     let log_level =
         std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     std::env::set_var("RUST_LOG", log_level);
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_module_path(false)
-        .format_target(false)
-        .init();
+    env_logger::builder().format_timestamp_millis().init();
 }
 
 fn main() {

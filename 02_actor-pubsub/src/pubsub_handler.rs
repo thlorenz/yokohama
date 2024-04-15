@@ -5,11 +5,12 @@ use std::{
     time::Duration,
 };
 use tokio::{sync::mpsc, task::JoinSet};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     common::ResultWithSubscriptionId,
     errors::{PubsubError, PubsubResult},
-    unsubscriber::{Unsubscriber, Unsubscribers},
+    unsubscriber::Unsubscribers,
 };
 
 pub enum Subscription {
@@ -32,7 +33,7 @@ impl SubscriptionsReceiver {
 async fn handle_subscription(
     subscription: Subscription,
     subid: u64,
-    unsubscriber: Unsubscriber,
+    unsubscriber: CancellationToken,
 ) {
     match subscription {
         Subscription::Ticker {
@@ -49,7 +50,7 @@ async fn handle_subscription(
             let mut tick = 0;
             loop {
                 tokio::select! {
-                    _ = unsubscriber.clone() => {
+                    _ = unsubscriber.cancelled() => {
                         debug!("Unsubscribing from ticker: {}", subid);
                         break;
                     },
