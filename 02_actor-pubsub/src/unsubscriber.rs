@@ -3,7 +3,7 @@ use std::{
     future::Future,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
+        Arc, Mutex,
     },
 };
 
@@ -41,25 +41,25 @@ impl Future for Unsubscriber {
 
 #[derive(Clone)]
 pub struct Unsubscribers {
-    unsubscribers: Arc<RwLock<HashMap<u64, Unsubscriber>>>,
+    unsubscribers: Arc<Mutex<HashMap<u64, Unsubscriber>>>,
 }
 
 impl Unsubscribers {
     pub fn new() -> Self {
         Self {
-            unsubscribers: Arc::<RwLock<HashMap<u64, Unsubscriber>>>::default(),
+            unsubscribers: Arc::<Mutex<HashMap<u64, Unsubscriber>>>::default(),
         }
     }
 
     pub fn add(&self, id: u64) -> Unsubscriber {
         let unsubscriber = Unsubscriber::new();
-        let mut unsubscribers = self.unsubscribers.write().unwrap();
+        let mut unsubscribers = self.unsubscribers.lock().unwrap();
         unsubscribers.insert(id, unsubscriber.clone());
         unsubscriber
     }
 
     pub fn unsubscribe(&self, id: u64) {
-        let mut unsubscribers = self.unsubscribers.write().unwrap();
+        let mut unsubscribers = self.unsubscribers.lock().unwrap();
         if let Some(unsubscriber) = unsubscribers.remove(&id) {
             unsubscriber.unsubscribe()
         }
