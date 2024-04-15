@@ -4,7 +4,7 @@ mod common;
 mod errors;
 mod pubsub_handler;
 mod pubsub_service;
-mod unsubscriber;
+mod unsubscribers;
 
 fn init_logger() {
     let log_level =

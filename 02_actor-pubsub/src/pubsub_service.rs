@@ -18,7 +18,7 @@ impl PubsubService {
         let mut io = PubSubHandler::new(MetaIoHandler::default());
         let mut service = Self {
             server: None,
-            actor: PubsubActor::new_separate_thread(),
+            actor: PubsubActor::new(),
         };
 
         service.add_version_subscription(&mut io);
@@ -49,11 +49,11 @@ impl PubsubService {
             move |params: Params,
                   _session: Arc<Session>,
                   subscriber: Subscriber| {
-                // All subscriptions come in on the same subscribe thread, while this is
+                // All subscriptions come in on the same subscribe thread and even though this is
                 // different from the main thread it causes one subscription blocking
                 // other subscriptions if it performs tasks synchronously.
-                // Additionally if we don't put the receive calls of ticks on a separate
-                // thread then this function never returns and the client never receives the
+                // Additionally if we don't put the receive calls of ticks into a separate
+                // task then this function never returns and the client never receives the
                 // subscription confirmation nor any ticks.
                 let thread = std::thread::current();
                 debug!(
@@ -73,11 +73,6 @@ impl PubsubService {
                     .sub_ticker(subscriber, Duration::from_millis(interval))
                 {
                     error!("Failed to subscribe to ticker: {:?}", err);
-                    // reject_internal_error(
-                    //     subscriber,
-                    //     "Failed to subscribe",
-                    //     Some(err),
-                    // );
                 };
             }
         };

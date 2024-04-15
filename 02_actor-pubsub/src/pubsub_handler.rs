@@ -1,16 +1,13 @@
 use jsonrpc_pubsub::{Subscriber, SubscriptionId};
 use log::*;
-use std::{
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     common::ResultWithSubscriptionId,
-    errors::{PubsubError, PubsubResult},
-    unsubscriber::Unsubscribers,
+    errors::{reject_internal_error, PubsubError, PubsubResult},
+    unsubscribers::Unsubscribers,
 };
 
 pub enum Subscription {
@@ -18,6 +15,14 @@ pub enum Subscription {
         subscriber: Subscriber,
         interval: Duration,
     },
+}
+
+impl Subscription {
+    pub fn into_subscriber(self) -> Subscriber {
+        match self {
+            Subscription::Ticker { subscriber, .. } => subscriber,
+        }
+    }
 }
 
 struct SubscriptionsReceiver {
@@ -81,7 +86,7 @@ pub struct PubsubActor {
 }
 
 impl PubsubActor {
-    pub fn new_separate_thread() -> Self {
+    pub fn new() -> Self {
         let (subscribe_tx, subscribe_rx) = mpsc::channel(100);
         let unsubscribers = Unsubscribers::new();
         {
@@ -93,9 +98,8 @@ impl PubsubActor {
                 .build()
                 .unwrap()
                 .block_on(async move {
-                    let subid: AtomicU64 = AtomicU64::default();
+                    let mut subid: u64 = 0;
                     let mut pending_subs = JoinSet::new();
-
                     let mut actor = SubscriptionsReceiver::new(subscribe_rx);
 
                     // Waiting for either of the two:
@@ -106,12 +110,12 @@ impl PubsubActor {
                             subscription = actor.subscriptions.recv() => {
                                 match subscription {
                                     Some(subscription) => {
-                                        let sub_id = subid.fetch_add(1, Ordering::Relaxed);
-                                        let unsubscriber = unsubscribers.add(sub_id);
+                                        subid += 1;
+                                        let unsubscriber = unsubscribers.add(subid);
                                         pending_subs
                                             .spawn(handle_subscription(
                                                 subscription,
-                                                sub_id,
+                                                subid,
                                                 unsubscriber
                                             ));
                                         debug!("Added subscription to a total of {}",
@@ -148,7 +152,16 @@ impl PubsubActor {
                 subscriber,
             })
             .map_err(|err| {
-                PubsubError::FailedToSendSubscription(Box::new(err))
+                let err_msg = format!("{:?}", err);
+                let subscription = err.0;
+                let subscriber = subscription.into_subscriber();
+                reject_internal_error(
+                    subscriber,
+                    "Failed to subscribe",
+                    Some(err_msg.clone()),
+                );
+
+                PubsubError::FailedToSendSubscription(err_msg)
             })?;
 
         Ok(())

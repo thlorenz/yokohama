@@ -4,8 +4,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PubsubError {
-    #[error("Failed to confirm subscription: {0:?}")]
-    FailedToSendSubscription(Box<dyn std::error::Error>),
+    #[error("Failed to confirm subscription: {0}")]
+    FailedToSendSubscription(String),
 }
 
 pub type PubsubResult<T> = Result<T, PubsubError>;
