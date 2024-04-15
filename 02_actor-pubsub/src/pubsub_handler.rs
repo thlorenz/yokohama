@@ -9,6 +9,7 @@ use tokio::{sync::mpsc, task::JoinSet};
 use crate::{
     common::ResultWithSubscriptionId,
     errors::{PubsubError, PubsubResult},
+    unsubscriber::{Unsubscriber, Unsubscribers},
 };
 
 pub enum Subscription {
@@ -18,47 +19,49 @@ pub enum Subscription {
     },
 }
 
-struct PubsubActorImpl {
+struct SubscriptionsReceiver {
     subscriptions: mpsc::Receiver<Subscription>,
-    sub_id: AtomicU64,
 }
 
-impl PubsubActorImpl {
+impl SubscriptionsReceiver {
     pub fn new(subscriptions: mpsc::Receiver<Subscription>) -> Self {
-        Self {
-            subscriptions,
-            sub_id: AtomicU64::default(),
-        }
-    }
-
-    fn get_subid(&self) -> u64 {
-        self.sub_id.fetch_add(1, Ordering::Relaxed)
+        Self { subscriptions }
     }
 }
 
-async fn handle_subscription(subscription: Subscription) {
+async fn handle_subscription(
+    subscription: Subscription,
+    subid: u64,
+    unsubscriber: Unsubscriber,
+) {
     match subscription {
         Subscription::Ticker {
             interval,
             subscriber,
         } => {
-            let subid = 1; //self.get_subid();
             let sink = subscriber
                 .assign_id(SubscriptionId::Number(subid))
                 .map_err(|e| {
                     error!("Failed to assign subscription id: {:?}", e);
                 })
                 .unwrap();
+            debug!("Subscribing to ticker: {}", subid);
             let mut tick = 0;
             loop {
-                // TODO: unsubscribe
-                tokio::time::sleep(interval).await;
-                tick += 1;
-                let res = ResultWithSubscriptionId::new(tick, subid);
-                if sink.notify(res.into_params_map()).is_err() {
-                    debug!("Subscripion has ended");
-                    break;
-                }
+                tokio::select! {
+                    _ = unsubscriber.clone() => {
+                        debug!("Unsubscribing from ticker: {}", subid);
+                        break;
+                    },
+                    _ = tokio::time::sleep(interval) => {
+                        tick += 1;
+                        let res = ResultWithSubscriptionId::new(tick, subid);
+                        if sink.notify(res.into_params_map()).is_err() {
+                            debug!("Subscripion has ended without proper unsubscribe");
+                            break;
+                        }
+                    }
+                };
             }
         }
     }
@@ -70,30 +73,50 @@ async fn handle_subscription(subscription: Subscription) {
 #[derive(Clone)]
 pub struct PubsubActor {
     subscribe: mpsc::Sender<Subscription>,
+    unsubscribers: Unsubscribers,
 }
 
 impl PubsubActor {
     pub fn new_separate_thread() -> Self {
-        let (subscribe, subscriptions) = mpsc::channel(100);
-        let mut actor = PubsubActorImpl::new(subscriptions);
-        let mut subs = JoinSet::new();
-
-        std::thread::spawn(move || {
-            tokio::runtime::Builder::new_multi_thread()
+        let (subscribe_tx, subscribe_rx) = mpsc::channel(100);
+        let unsubscribers = Unsubscribers::new();
+        {
+            let unsubscribers = unsubscribers.clone();
+            std::thread::spawn(move || {
+                tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .thread_name("PubsubActorRuntime")
                 .build()
                 .unwrap()
                 .block_on(async move {
+                    let subid: AtomicU64 = AtomicU64::default();
+                    let mut pending_subs = JoinSet::new();
+
+                    let mut actor = SubscriptionsReceiver::new(subscribe_rx);
+
+                    // Waiting for either of the two:
+                    // a) a new subscriptions comes in and we add it to pending subscriptions
+                    // b) polling subs, once done they are auto-removed from pending subscriptions
                     loop {
                         tokio::select! {
                             subscription = actor.subscriptions.recv() => {
                                 match subscription {
-                                    Some(subscription) => subs.spawn(handle_subscription(subscription)),
+                                    Some(subscription) => {
+                                        let sub_id = subid.fetch_add(1, Ordering::Relaxed);
+                                        let unsubscriber = unsubscribers.add(sub_id);
+                                        pending_subs
+                                            .spawn(handle_subscription(
+                                                subscription,
+                                                sub_id,
+                                                unsubscriber
+                                            ));
+                                        debug!("Added subscription to a total of {}",
+                                            pending_subs.len());
+                                    },
                                     None => break,
                                 };
                             },
-                            next = subs.join_next() => {
+                            next = pending_subs.join_next() => {
                                 if let Some(Err(err)) = next {
                                     error!("Failed to join task: {:?}", err)
                                 }
@@ -101,9 +124,13 @@ impl PubsubActor {
                         }
                     }
                 });
-        });
+            });
+        }
 
-        Self { subscribe }
+        Self {
+            subscribe: subscribe_tx,
+            unsubscribers,
+        }
     }
 
     pub fn sub_ticker(
@@ -121,5 +148,9 @@ impl PubsubActor {
             })?;
 
         Ok(())
+    }
+
+    pub fn unsubscribe(&self, id: u64) {
+        self.unsubscribers.unsubscribe(id);
     }
 }

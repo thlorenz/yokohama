@@ -44,53 +44,66 @@ impl PubsubService {
     }
 
     fn add_ticker_subscription(&self, io: &mut PubSubHandler<Arc<Session>>) {
-        let actor = self.actor.clone();
+        let subscribe = {
+            let actor = self.actor.clone();
+            move |params: Params,
+                  _session: Arc<Session>,
+                  subscriber: Subscriber| {
+                // All subscriptions come in on the same subscribe thread, while this is
+                // different from the main thread it causes one subscription blocking
+                // other subscriptions if it performs tasks synchronously.
+                // Additionally if we don't put the receive calls of ticks on a separate
+                // thread then this function never returns and the client never receives the
+                // subscription confirmation nor any ticks.
+                let thread = std::thread::current();
+                debug!(
+                    "tick sub thread: {:?} - {:?}",
+                    thread.name(),
+                    thread.id()
+                );
+
+                info!("params: {:#?}", params);
+
+                let interval = params
+                    .parse::<TickSubscription>()
+                    .expect("Invalid params")
+                    .interval;
+
+                if let Err(err) = actor
+                    .sub_ticker(subscriber, Duration::from_millis(interval))
+                {
+                    error!("Failed to subscribe to ticker: {:?}", err);
+                    // reject_internal_error(
+                    //     subscriber,
+                    //     "Failed to subscribe",
+                    //     Some(err),
+                    // );
+                };
+            }
+        };
+
+        let unsubscribe = {
+            let actor = self.actor.clone();
+            move |id: SubscriptionId,
+                  _session: Option<Arc<Session>>|
+                  -> BoxFuture<jsonrpc_core::Result<Value>> {
+                debug!("Closing tick subscription");
+                match id {
+                    SubscriptionId::Number(id) => {
+                        actor.unsubscribe(id);
+                    }
+                    SubscriptionId::String(_) => {
+                        warn!("subscription id should be a number")
+                    }
+                }
+                Box::pin(futures::future::ready(Ok(Value::Bool(true))))
+            }
+        };
+
         io.add_subscription(
             "tickNotification",
-            (
-                "tickSubscribe",
-                move |params: Params, _, subscriber: Subscriber| {
-                    // All subscriptions come in on the same subscribe thread, while this is
-                    // different from the main thread it causes one subscription blocking
-                    // other subscriptions if it performs tasks synchronously.
-                    // Additionally if we don't put the receive calls of ticks on a separate
-                    // thread then this function never returns and the client never receives the
-                    // subscription confirmation nor any ticks.
-                    let thread = std::thread::current();
-                    debug!(
-                        "tick sub thread: {:?} - {:?}",
-                        thread.name(),
-                        thread.id()
-                    );
-
-                    info!("params: {:#?}", params);
-
-                    let interval = params
-                        .parse::<TickSubscription>()
-                        .expect("Invalid params")
-                        .interval;
-
-                    if let Err(err) = actor
-                        .sub_ticker(subscriber, Duration::from_millis(interval))
-                    {
-                        error!("Failed to subscribe to ticker: {:?}", err);
-                        // reject_internal_error(
-                        //     subscriber,
-                        //     "Failed to subscribe",
-                        //     Some(err),
-                        // );
-                    };
-                },
-            ),
-            (
-                "tickUnsubscribe",
-                |_id: SubscriptionId,
-                 _meta|
-                 -> BoxFuture<jsonrpc_core::Result<Value>> {
-                    debug!("Closing tick subscription");
-                    Box::pin(futures::future::ready(Ok(Value::Bool(true))))
-                },
-            ),
+            ("tickSubscribe", subscribe),
+            ("tickUnsubscribe", unsubscribe),
         );
     }
 

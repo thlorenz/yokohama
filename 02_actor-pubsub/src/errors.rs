@@ -1,15 +1,11 @@
 use jsonrpc_pubsub::Subscriber;
 use log::*;
 use thiserror::Error;
-use tokio::sync::oneshot;
 
 #[derive(Error, Debug)]
 pub enum PubsubError {
     #[error("Failed to confirm subscription: {0:?}")]
     FailedToSendSubscription(Box<dyn std::error::Error>),
-
-    #[error("Failed to confirm subscription: {0:?}")]
-    FailedToConfirmSubscription(Box<oneshot::error::RecvError>),
 }
 
 pub type PubsubResult<T> = Result<T, PubsubError>;
@@ -17,6 +13,7 @@ pub type PubsubResult<T> = Result<T, PubsubError>;
 // -----------------
 // Subscriber Errors
 // -----------------
+#[allow(dead_code)]
 pub fn reject_internal_error<T: std::fmt::Debug>(
     subscriber: Subscriber,
     msg: &str,
@@ -30,6 +27,7 @@ pub fn reject_internal_error<T: std::fmt::Debug>(
     )
 }
 
+#[allow(dead_code)]
 pub fn reject_parse_error<T: std::fmt::Debug>(
     subscriber: Subscriber,
     msg: &str,
