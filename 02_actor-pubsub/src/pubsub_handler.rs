@@ -2,7 +2,7 @@ use jsonrpc_pubsub::{Subscriber, SubscriptionId};
 use log::*;
 use std::{
     sync::atomic::{AtomicU64, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -48,6 +48,7 @@ async fn handle_subscription(
                 .unwrap();
             debug!("Subscribing to ticker: {}", subid);
             let mut tick = 0;
+            let start = Instant::now();
             loop {
                 tokio::select! {
                     _ = unsubscriber.cancelled() => {
@@ -64,6 +65,8 @@ async fn handle_subscription(
                     }
                 };
             }
+            let elapsed = start.elapsed();
+            debug!("Ticker subscription {} lasted for {:?}", subid, elapsed);
         }
     }
 }
